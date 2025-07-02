@@ -7,7 +7,7 @@ import requests
 SYMBOL = "btcusdc"
 INTERVAL = "1h"
 STREAM_URL = f"wss://stream.binance.com:9443/ws/{SYMBOL}@kline_{INTERVAL}"
-CLOUD_FUNCTION_URL = "https://binance-raw-504389925601.europe-west3.run.app"
+CLOUD_FUNCTION_URL = "https://europe-west3-mineral-brand-231612.cloudfunctions.net/binance-raw-loader"
 
 def send_to_gcp(data):
     headers = {"Content-Type": "application/json"}
@@ -26,18 +26,23 @@ async def stream_kline():
             kline = kline_data.get("k", {})
 
             if kline.get("x"):  # Only send closed candles
-                print("⏳ Kline closed. Sending to Cloud Function...")
+                print("Kline closed. Sending to Cloud Function...")
 
-                formatted_kline = [
-                    kline["t"],
-                    kline["o"],
-                    kline["h"],
-                    kline["l"],
-                    kline["c"],
-                    kline["v"],
-                ]
-                send_to_gcp(formatted_kline)
+                formatted_kline = {
+                    "exchange": "Binance",
+                    "symbol": SYMBOL,
+                    "interval": INTERVAL,
+                    "open_time": kline["t"],
+                    "open": kline["o"],
+                    "high": kline["h"],
+                    "low": kline["l"],
+                    "close": kline["c"],
+                    "volume": kline["v"],
+                    "source": "websocket"
+                }
+                #send_to_gcp(formatted_kline)
+                json_send={"kline": formatted_kline}
+                print(json_send)
 
 if __name__ == "__main__":
     asyncio.run(stream_kline())
-

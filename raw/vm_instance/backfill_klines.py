@@ -11,7 +11,7 @@ DAYS = 30
 LIMIT = 1000  # Max candles per request
 
 # GCP Cloud Function URL (replace with your actual deployed function)
-CLOUD_FUNCTION_URL = "https://binance-raw-504389925601.europe-west3.run.app"
+CLOUD_FUNCTION_URL = "https://europe-west3-mineral-brand-231612.cloudfunctions.net/binance-raw-loader"
 
 def get_klines(start_time, end_time):
     """Fetch klines from Binance API within a given time range."""
@@ -34,7 +34,7 @@ def send_to_gcp(data):
     print(f"Sent {len(data)} klines → Status: {response.status_code}, Response: {response.text}")
 
 if __name__ == "__main__":
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     start = now - datetime.timedelta(days=DAYS)
 
     print(f"Starting backfill from {start} to {now}...")
@@ -48,7 +48,22 @@ if __name__ == "__main__":
         try:
             klines = get_klines(batch_start, batch_end)
             if klines:
-                all_klines.extend(klines)
+                enriched_klines = []
+                for kline in klines:
+                    enriched_kline = enriched_kline = {
+                        "exchange": "Binance",
+                        "symbol": SYMBOL,
+                        "interval": INTERVAL,
+                        "open_time": kline[0],
+                        "open": kline[1],
+                        "high": kline[2],
+                        "low": kline[3],
+                        "close": kline[4],
+                        "volume": kline[5],
+                        "source": "rest"
+                    }
+                    enriched_klines.append(enriched_kline)
+                all_klines.extend(enriched_klines)
                 print(f"Collected {len(klines)} klines from {batch_start} to {batch_end}")
             else:
                 print(f"No data for {batch_start} → {batch_end}")

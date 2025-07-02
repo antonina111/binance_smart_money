@@ -1,26 +1,12 @@
-import datetime
-import pandas as pd
 from google.cloud import storage
 import functions_framework
-import io
+import json
 
 # GCS Configuration
-BUCKET_NAME = "binance-data-l"
-DESTINATION_BLOB_NAME = "raw/binance_btcusdc_1h.csv"
+BUCKET_NAME = "smart-money-data-lake"
+DESTINATION_BLOB_NAME = "raw/binance_btcusdc_1h.jsonl"
+STREAMING_TEMP_BLOB = "raw/btcusdc_1h_temp.jsonl"
 
-# Convert raw klines (list of lists) to list of dicts
-def format_klines(raw_klines):
-    return [
-        {
-            "open_time": datetime.datetime.fromtimestamp(row[0] / 1000),
-            "open": float(row[1]),
-            "high": float(row[2]),
-            "low": float(row[3]),
-            "close": float(row[4]),
-            "volume": float(row[5])
-        }
-        for row in raw_klines
-    ]
 
 @functions_framework.http
 def main(request):
@@ -31,36 +17,65 @@ def main(request):
         klines = req_json.get("klines")
         single_kline = req_json.get("kline")
 
-        if klines:
-            formatted = format_klines(klines)
-        elif single_kline:
-            formatted = format_klines([single_kline])
-        else:
-            return "No 'kline' or 'klines' provided in request", 400
-
-        new_df = pd.DataFrame(formatted)
-
         # GCS client and blob
         client = storage.Client()
         bucket = client.bucket(BUCKET_NAME)
         blob = bucket.blob(DESTINATION_BLOB_NAME)
 
-        # Load existing CSV if present
-        if blob.exists():
-            existing_csv = blob.download_as_text()
-            existing_df = pd.read_csv(io.StringIO(existing_csv), parse_dates=["open_time"])
+        # If streaming, use a temporary blob
+        if single_kline:
+            temp_blob = bucket.blob(STREAMING_TEMP_BLOB)
 
-            # Merge, deduplicate, sort
-            combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-            combined_df.drop_duplicates(subset="open_time", keep="last", inplace=True)
-            combined_df.sort_values("open_time", inplace=True)
+            if isinstance(single_kline, dict):
+                single_kline = json.dumps(single_kline, separators=(",", ":")) + "\n"
+
+            temp_blob.upload_from_string(
+                single_kline,
+                content_type="application/json"
+            )
+            # Compose the original and the new blob
+            if blob.exists():
+                blob.compose([blob, temp_blob])
+                # Delete the temporary blob
+                temp_blob.delete()
+
+                return "Single kline appended successfully to existing file", 200
+            else:
+                # If the destination blob doesn't exist, just rename the temp blob
+                bucket.copy_blob(temp_blob, bucket, DESTINATION_BLOB_NAME)
+                temp_blob.delete()
+
+                return "Single kline appended successfully to new file", 200
+
+        elif klines:
+            
+            existing_open_times = set()
+            existing_lines = []
+
+            if blob.exists():
+                content = blob.download_as_text().splitlines()
+                for line in content:
+                    record = json.loads(line)
+                    existing_open_times.add(record.get("open_time"))
+                    existing_lines.append(line)
+
+            # Append only new lines (deduped by open_time)
+            new_lines = []
+            for row in klines:
+                if row.get("open_time") not in existing_open_times:
+                    new_lines.append(json.dumps(row, separators=(",", ":")))
+
+            combined_lines = existing_lines + new_lines
+            # Sort combined lines by open_time
+            combined_lines.sort(key=lambda x: json.loads(x)["open_time"])
+            # Write the combined lines back to the blob
+            blob.upload_from_string("\n".join(combined_lines), content_type="application/json")
+
+            return f"Appended {len(new_lines)} new kline(s)", 200
+
         else:
-            combined_df = new_df
-
-        # Upload updated CSV
-        blob.upload_from_string(combined_df.to_csv(index=False), content_type="text/csv")
-
-        return f"Appended {len(new_df)} kline(s)", 200
+            
+            return "No 'kline' or 'klines' provided in request", 400
 
     except Exception as e:
         return f"Error: {e}", 500
