@@ -50,7 +50,7 @@ This Google Cloud VM (`e2-micro`) streams live Binance Kline (candlestick) data 
 ### Cloud Function (main.py)
 - Receives data from either live stream (kline) or backfill (klines)
 - Stores data in GCS under:
-gs://smart-money-data-lake/raw/binance_btcusdc_1h.jsonl
+gs://BUCKET_NAME/raw/binance_btcusdc_1h.jsonl
 - Backfill is merged with existing data and deduplicated using open_time
 - Streaming data is appended via blob composition
 
@@ -64,4 +64,4 @@ Use deploy.sh in raw/cloud_function/ to deploy the function with appropriate IAM
 
 Bucket Layout:
 Raw data is stored in:
-gs://smart-money-data-lake/raw/binance_btcusdc_1h.jsonl
+gs://BUCKET_NAME/raw/binance_btcusdc_1h.jsonl

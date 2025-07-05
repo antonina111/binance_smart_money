@@ -2,12 +2,19 @@ import asyncio
 import websockets
 import json
 import requests
+import os
 
 # Configuration
 SYMBOL = "btcusdc"
 INTERVAL = "1h"
 STREAM_URL = f"wss://stream.binance.com:9443/ws/{SYMBOL}@kline_{INTERVAL}"
-CLOUD_FUNCTION_URL = "https://europe-west3-mineral-brand-231612.cloudfunctions.net/binance-raw-loader"
+
+# GCP Cloud Function URL
+CLOUD_FUNCTION_URL = os.environ.get("CLOUD_FUNCTION_URL")
+if not CLOUD_FUNCTION_URL:
+    raise ValueError("CLOUD_FUNCTION_URL not set in environment")
+
+print(CLOUD_FUNCTION_URL)
 
 def send_to_gcp(data):
     headers = {"Content-Type": "application/json"}
@@ -40,7 +47,7 @@ async def stream_kline():
                     "volume": kline["v"],
                     "source": "websocket"
                 }
-                #send_to_gcp(formatted_kline)
+                send_to_gcp(formatted_kline)
                 json_send={"kline": formatted_kline}
                 print(json_send)
 

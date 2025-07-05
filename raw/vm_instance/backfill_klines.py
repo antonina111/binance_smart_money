@@ -2,6 +2,7 @@ import time
 import datetime
 import requests
 import json
+import os
 
 # Binance REST API config
 BINANCE_URL = "https://api.binance.com/api/v3/klines"
@@ -10,8 +11,19 @@ INTERVAL = "1h"
 DAYS = 30
 LIMIT = 1000  # Max candles per request
 
-# GCP Cloud Function URL (replace with your actual deployed function)
-CLOUD_FUNCTION_URL = "https://europe-west3-mineral-brand-231612.cloudfunctions.net/binance-raw-loader"
+# GCP Cloud Function URL
+CLOUD_FUNCTION_URL = os.environ.get("CLOUD_FUNCTION_URL")
+if not CLOUD_FUNCTION_URL:
+    try:
+        CLOUD_FUNCTION_URL = requests.get(
+            "http://metadata.google.internal/computeMetadata/v1/instance/attributes/cloud-function-url",
+            headers={"Metadata-Flavor": "Google"},
+            timeout=2
+        ).text
+    except Exception:
+        raise ValueError("CLOUD_FUNCTION_URL not set and cannot be fetched from metadata")
+
+print(CLOUD_FUNCTION_URL)
 
 def get_klines(start_time, end_time):
     """Fetch klines from Binance API within a given time range."""
@@ -19,7 +31,7 @@ def get_klines(start_time, end_time):
         "symbol": SYMBOL,
         "interval": INTERVAL,
         "startTime": int(start_time.timestamp() * 1000),
-        "endTime": int(end_time.timestamp() * 1000),
+        "endTime": int(end_time.timestamp() * 1000) - 1,
         "limit": LIMIT
     }
 
@@ -35,6 +47,7 @@ def send_to_gcp(data):
 
 if __name__ == "__main__":
     now = datetime.datetime.now(datetime.timezone.utc)
+    now = now.replace(minute=0, second=0, microsecond=0)
     start = now - datetime.timedelta(days=DAYS)
 
     print(f"Starting backfill from {start} to {now}...")
@@ -50,7 +63,7 @@ if __name__ == "__main__":
             if klines:
                 enriched_klines = []
                 for kline in klines:
-                    enriched_kline = enriched_kline = {
+                    enriched_kline = {
                         "exchange": "Binance",
                         "symbol": SYMBOL,
                         "interval": INTERVAL,
@@ -74,6 +87,7 @@ if __name__ == "__main__":
         time.sleep(0.2)  # Sleep to avoid rate limits
 
     print(f"Sending total {len(all_klines)} klines to Cloud Function...")
+    print("Sending to:", CLOUD_FUNCTION_URL)
     send_to_gcp(all_klines)
 
     print("Backfill complete.")

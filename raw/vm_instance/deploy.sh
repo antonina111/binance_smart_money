@@ -9,6 +9,19 @@ IMAGE_PROJECT="debian-cloud"
 BOOT_DISK_SIZE="10GB"
 STARTUP_SCRIPT="startup.sh"
 
+# ===== LOAD LOCAL SECRETS =====
+if [ ! -f .env ]; then
+  echo ".env file not found! Create one with your config:"
+  echo "CLOUD_FUNCTION_URL=..."
+  echo "SYMBOL=BTCUSDC"
+  echo "INTERVAL=1h"
+  echo "DAYS=30"
+  exit 1
+fi
+
+# Load .env file
+source .env
+
 # ===== DEPLOY THE VM =====
 #echo "Deploying GCP VM: $VM_NAME..."
 
@@ -27,17 +40,23 @@ STARTUP_SCRIPT="startup.sh"
 
 
 #Redeploy scripts
-
-gcloud compute instances add-metadata $VM_NAME \
+gcloud compute instances add-metadata "$VM_NAME" \
   --zone "$ZONE" \
-  --metadata-from-file startup-script=startup.sh
+  --metadata-from-file startup-script="$STARTUP_SCRIPT"
 
-gcloud compute instances add-metadata $VM_NAME \
+# Upload backfill script
+gcloud compute instances add-metadata "$VM_NAME" \
   --zone "$ZONE" \
   --metadata-from-file backfill-script=backfill_klines.py
 
-gcloud compute instances add-metadata $VM_NAME \
+# Upload streamer script
+gcloud compute instances add-metadata "$VM_NAME" \
   --zone "$ZONE" \
   --metadata-from-file streamer-script=binance_kline_streamer.py
+
+gcloud compute instances add-metadata "$VM_NAME" \
+  --zone "$ZONE" \
+  --metadata \
+    cloud-function-url="$CLOUD_FUNCTION_URL"
 
 echo "Scripts redeployed"
