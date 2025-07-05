@@ -1,12 +1,15 @@
 from google.cloud import storage
 import functions_framework
 import json
+import os
 
 # GCS Configuration
-BUCKET_NAME = "smart-money-data-lake"
 DESTINATION_BLOB_NAME = "raw/binance_btcusdc_1h.jsonl"
 STREAMING_TEMP_BLOB = "raw/btcusdc_1h_temp.jsonl"
 
+BUCKET_NAME = os.environ.get("BUCKET_NAME")
+if not BUCKET_NAME:
+    raise ValueError("Missing required environment variable: BUCKET_NAME")
 
 @functions_framework.http
 def main(request):
@@ -35,8 +38,11 @@ def main(request):
             )
             # Compose the original and the new blob
             if blob.exists():
+                content = blob.download_as_bytes()
+                if not content.endswith(b"\n"):
+                    blob.upload_from_string(content + b"\n")
+                
                 blob.compose([blob, temp_blob])
-                # Delete the temporary blob
                 temp_blob.delete()
 
                 return "Single kline appended successfully to existing file", 200
