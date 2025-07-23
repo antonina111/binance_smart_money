@@ -1,0 +1,6 @@
+pandas
+pyarrow
+fsspec
+gcsfs
+scipy
+google-cloud-storage
