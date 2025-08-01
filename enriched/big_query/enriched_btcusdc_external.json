@@ -1,0 +1,7 @@
+{
+  "sourceFormat": "PARQUET",
+  "autodetect": true,
+  "sourceUris": [
+    "gs://smart-money-data-lake/enriched/symbol=BTCUSDC/*"
+  ]
+}
